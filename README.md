@@ -1,277 +1,222 @@
-# 🏢 IoT Smart-Building Room Occupancy Estimation (Proof of Concept)
-### *Bridging Data Engineering and Applied Machine Learning for Sustainable Facilities Management*
+# NorthStar Bank: Term Deposit Subscription Prediction
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue?logo=python&logoColor=white)
-![Scikit-Learn](https://img.shields.io/badge/Library-Scikit--Learn-F7931E?logo=scikit-learn&logoColor=white)
-![Status](https://img.shields.io/badge/Project-Proof--of--Concept-success)
-![Task](https://img.shields.io/badge/Task-Multiclass%20Classification-informational)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-1.2%2B-orange.svg)](https://scikit-learn.org/)
+[![Pandas](https://img.shields.io/badge/Pandas-2.0%2B-150458.svg)](https://pandas.pydata.org/)
+[![Status](https://img.shields.io/badge/Project-Production%20Ready-brightgreen.svg)]()
+
+> An end-to-end Machine Learning classification system designed to transition retail banking marketing from broad, blind telemarketing to high-propensity, targeted customer acquisition.
 
 ---
 
-## 📌 Executive Summary & Business Context
+## 📌 Executive Summary & HR Story
 
-At **NovaSpace Technologies**, meeting rooms across multiple offices are equipped with non-intrusive IoT sensor nodes streaming environmental telemetry every ~30 seconds into the centralized Enterprise Analytics Platform.
+> *"At NorthStar Bank, Marketing was cold-calling every customer in the database for every Term Deposit campaign — an expensive approach that burned call-center hours and fatigued uninterested clients. I built a supervised classification pipeline to score customers as Likely vs. Unlikely to subscribe, using demographic, financial, and historical campaign data.*
+>
+> *A critical early finding was the presence of `duration` (call duration in seconds) in the raw dataset. While statistically predictive, call duration cannot be known before dialing; keeping it would introduce severe data leakage and create a model that looks remarkable in a notebook but fails in production. I removed it immediately.*
+>
+> *Due to an 88:12 class imbalance (only ~11.7% conversion rate), baseline accuracy was misleading. I evaluated Logistic Regression, K-Nearest Neighbors, and Decision Trees using Macro F1, Recall, Precision, and Confusion Matrices. I selected the **Cost-Sensitive Decision Tree (Depth=7, Class-Balanced)**, which achieved the highest **Macro F1 (0.6606)** and captured over 52% of conversions while cutting uninterested calls by ~87%. In production, this allows Marketing to prioritize the top-propensity call list rather than dialing blind."*
+
+---
+
+## 🏢 Business Context & Problem Statement
+
+### Company Profile
+**NorthStar Bank** is a diversified financial institution offering retail savings accounts, consumer credit, mortgages, and investment products, including fixed-term deposits.
 
 ### The Business Challenge
-The Facilities Management team currently faces an operational blind spot: **they only know if a room was booked, not if it is actually occupied**.
-* **Ghost Bookings:** Scheduled meetings are frequently cancelled or no-shows occur, yet HVAC and lighting systems run continuously in empty spaces, driving unnecessary energy costs.
-* **Under-utilization:** 8-person conference rooms are routinely occupied by single individuals.
-* **Ad-hoc Usage:** Employees often hold spontaneous meetings in unreserved spaces.
+Whenever Marketing launched a Term Deposit campaign, the call center dialed every single contact in the database:
+- **High Operational Costs:** Call-center agent capacity was saturated with unproductive leads.
+- **Customer Friction:** Uninterested customers received repetitive telemarketing calls.
+- **Opportunity Loss:** High-value customers ready to convert received delayed outreach.
 
-### The Core Objective
-Approaching this problem from the perspective of a **Data Engineer**, the goal is to evaluate an existing curated sensor data product and build a rigorous **Proof of Concept (PoC) Multiclass Classifier** to estimate exact room occupancy in real time:
-$$\text{Room Occupancy Count} \in \{0, 1, 2, 3\}$$
-
----
-
-## 🏗️ End-to-End Enterprise Data Architecture
-
-Rather than treating the dataset as an isolated static CSV, the project models the data as an **enterprise data product** originating from an upstream streaming architecture:
-
-```mermaid
-flowchart LR
-    A["IoT Sensor Nodes\n(Temp, Light, Sound, CO₂, PIR)"] --> B["Sensor Gateway\n(Edge Aggregator)"]
-    B --> C["Raw Ingestion Layer\n(Kafka / Event Hub)"]
-    C --> D["Enterprise Data Platform\n(Validation & Cleansing)"]
-    D --> E["Curated Room Telemetry Table\n(Analytical Store)"]
-    E --> F["ML Ingestion & Preprocessing\n(Feature Transformation)"]
-    F --> G["PoC Classification Model\n(Decision Tree / KNN / Logistic)"]
-    G --> H["Prediction Store & Real-Time Facilities Dashboard"]
-```
+### Machine Learning Formulation
+- **Task Type:** Supervised Binary Classification.
+- **Target Variable ($y$):**
+  - `1` (`yes`): Customer subscribes to a Term Deposit.
+  - `0` (`no`): Customer does not subscribe.
+- **Business Operationalization:** Transition from exhaustive calling to a **Ranked / Prioritized Calling Queue**, where call agents dial high-probability leads first, maximizing conversion per agent hour.
 
 ---
 
-## 📊 Dataset Overview & Data Quality Assessment
+## 📊 Dataset Overview & Audit
 
-The curated dataset represents physical telemetry sampled at approximately 30-second intervals from a controlled conference room environment.
+The dataset reflects retail banking customer demographics, previous campaign outcomes, and socio-economic touchpoints.
 
-### 1. Schema & Characteristics
-* **Total Records:** 8,103 observations
-* **Features:** 18 input features (16 continuous/binary environmental sensors + 2 temporal features)
-* **Target Feature:** `Room_Occupancy_Count` (Multiclass: 0, 1, 2, 3 occupants)
-* **Missing Values:** `0` (Zero null values across all sensor streams)
-* **Duplicate Rows:** Checked and verified for integrity
+| Metric / Dimension | Training Set | Test Set (Inference) |
+| :--- | :--- | :--- |
+| **Total Rows** | 36,168 | 9,043 |
+| **Total Raw Columns** | 17 | 17 (includes unique customer `id`) |
+| **Missing / Null Values** | 0 (`.isna().sum() == 0`) | 0 |
+| **Duplicate Records** | 0 | 0 |
+| **Class Distribution ($y$)** | `no`: 31,937 (88.3%)<br>`yes`: 4,231 (11.7%) | Unlabeled (Target for prediction) |
 
-### 2. Sensor Inventory
-| Category | Sensor Features | Physical Units & Typical Range | Sensor Description |
-| :--- | :--- | :--- | :--- |
-| **Temperature** | `S1_Temp`, `S2_Temp`, `S3_Temp`, `S4_Temp` | 24.44°C – 29.00°C | Multi-zone ambient air temperature sensors |
-| **Illuminance** | `S1_Light`, `S2_Light`, `S3_Light`, `S4_Light` | 0 – 280 Lux | Directional light intensity (detects fixtures & sunlight) |
-| **Acoustics** | `S1_Sound`, `S2_Sound`, `S3_Sound`, `S4_Sound` | 0.04 – 3.88 Volts / Amp | Ambient noise floor & vocal acoustic amplitude |
-| **Air Quality** | `S5_CO2`, `S5_CO2_Slope` | 345 – 1270 ppm; $\Delta\text{ppm}/\Delta t$ | Absolute carbon dioxide concentration and rate of change |
-| **Motion** | `S6_PIR`, `S7_PIR` | Binary flag ($0$ or $1$) | Passive Infrared (PIR) body motion sensors |
-
-### 3. Target Class Distribution (Imbalance Profile)
-The room remains vacant for the majority of monitoring hours, leading to a natural class imbalance:
-
-| Occupancy Class | Sample Count | Proportion | Operational Meaning |
-| :---: | :---: | :---: | :--- |
-| **Class 0** | **6,582** | **81.23%** | Room is vacant (energy saving opportunity) |
-| **Class 1** | **367** | **4.53%** | Solo occupant (phone call / focused work) |
-| **Class 2** | **599** | **7.39%** | Small collaboration / 1-on-1 meeting |
-| **Class 3** | **555** | **6.85%** | Full team meeting / group discussion |
-| **Total** | **8,103** | **100.0%** | |
-
-> **⚠️ Data Engineering Insight:** With **81.2%** of the records belonging to Class 0, naive classification accuracy is an uninformative metric (a trivial dummy baseline predicting "0" yields >81% accuracy). Consequently, **Macro-averaged F1-Score** is selected as the primary optimization metric, giving equal weight to each occupancy class.
+### Key Data Observations
+- **Severe Class Imbalance:** ~88.3% non-subscribers vs. ~11.7% subscribers. A naive majority-class classifier yields 88.3% accuracy while offering zero operational value.
+- **Implicit Missingness:** While standard null checks returned zero, attributes such as `job` (224 entries), `education` (1,488 entries), `poutcome`, and `contact` contain explicit `"unknown"` strings, preserved to prevent data loss.
 
 ---
 
-## 🔍 Sensor Dynamics & Exploratory Data Analysis (EDA)
+## 🔍 Exploratory Data Analysis & Critical Findings
 
-Understanding the physical domain dynamics is crucial before engineering model features:
+### 1. The Call Duration Trap (Data Leakage)
+- The raw dataset includes a `duration` attribute (call duration in seconds).
+- **Domain Insight:** Call duration is strictly recorded *post-call*. At the moment Marketing generates daily call sheets, call duration is unknown ($t=0$).
+- **Engineering Decision:** `duration` was permanently dropped from feature matrix $X$ prior to modeling to prevent catastrophic target leakage.
 
-1. **Carbon Dioxide Dynamics (`S5_CO2` & `S5_CO2_Slope`):**
-   * Humans naturally exhale $CO_2$. While baseline ambient levels hover around 350–400 ppm, occupied rooms steadily climb toward 800–1270 ppm.
-   * `S5_CO2_Slope` captures the velocity of change: a steep positive slope indicates people recently entered; a negative slope indicates room ventilation after departure.
-2. **Acoustic Signature (`S1_Sound` – `S4_Sound`):**
-   * Empty rooms exhibit a uniform background hum ($0.04 - 0.08$ V).
-   * Spikes ($>0.50$ V) strongly signal conversation and human presence, distinguishing quiet 1-person work from multi-person collaborative discussion.
-3. **Passive Infrared (`S6_PIR`, `S7_PIR`):**
-   * PIR sensors detect thermal motion differentials. While excellent at registering entry, exit, or gesturing, they often drop to $0$ when occupants are seated quietly typing or listening. Thus, PIR alone is insufficient for occupancy count.
-4. **Lighting Levels (`S1_Light` – `S4_Light`):**
-   * Values drop to $0$ during dark/empty periods and surge during meeting hours. Different sensor values identify whether ceiling lights or specific desk fixtures are on.
-5. **Temperature Response (`S1_Temp` – `S4_Temp`):**
-   * Temperature exhibits thermal inertia—climbing slowly as body heat dissipates and HVAC systems compensate. It provides ambient context rather than instantaneous counts.
+### 2. Campaign Fatigue & Recency Dynamics
+- `previous` (number of contacts prior to this campaign) and `poutcome` (outcome of past campaigns) exhibited strong directional signals: customers with previous campaign `success` convert at a markedly higher rate.
+- Repeated dials within the current campaign (`campaign`) hit diminishing returns quickly; excessive contacts correlate with lower conversion.
 
 ---
 
-## ⚙️ Data Preprocessing & Leakage Prevention
+## ⚙️ Feature Engineering & Preprocessing Pipeline
 
-### 1. Temporal Leakage Prevention
-Raw `Date` and `Time` strings were intentionally **not** fed directly into the model to prevent temporal overfitting (e.g., memorizing specific calendar days or timestamps that do not generalize to future operational dates). Instead, they were engineered into domain-relevant cyclical/periodic indicators:
-* `Hour = Time.dt.hour` (captures business operating hours vs. off-hours)
-* `DayOfWeek = Date.dt.dayofweek` (captures weekday vs. weekend patterns)
-* Raw `Date` and `Time` columns were removed from the training matrix.
+### Feature Engineering
+Three domain-specific features were engineered to capture historical interaction strength:
 
-### 2. Feature Scaling Strategy
-Features exist on radically different scales:
-* Temperature: $24 - 29$
-* Acoustics: $0.04 - 3.88$
-* Illuminance: $0 - 280$
-* $CO_2$: $345 - 1270$
+1. `was_contacted_before`: Binary flag (`previous > 0`) differentiating new prospects from existing campaign relationships.
+2. `previous_success`: Binary indicator (`poutcome == 'success'`) isolating customers with verified historical conversion affinity.
+3. `total_contacts`: Additive cumulative contact count (`campaign + previous`) capturing cumulative campaign pressure.
 
-Distance-based algorithms (such as K-Nearest Neighbors) and gradient-based algorithms (such as Logistic Regression) would be dominated by raw $CO_2$ and Light values without standard scaling.
-
-### 3. Modular Preprocessing Pipeline
-A scikit-learn `ColumnTransformer` was designed to guarantee reproducible, leak-free transformations across train and test sets:
-
-```python
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OrdinalEncoder
-
-preprocessor = ColumnTransformer([
-    ('numerical', StandardScaler(), [
-        'S1_Temp', 'S2_Temp', 'S3_Temp', 'S4_Temp',
-        'S1_Light', 'S2_Light', 'S3_Light', 'S4_Light',
-        'S1_Sound', 'S2_Sound', 'S3_Sound', 'S4_Sound',
-        'S5_CO2', 'S5_CO2_Slope', 'Hour'
-    ]),
-    ('categorical', OrdinalEncoder(), ['DayOfWeek']),
-    ('pir', 'passthrough', ['S6_PIR', 'S7_PIR'])
-])
-```
-
-* **Data Partitioning:** Stratified 80/20 train-test split (`test_size=0.2`, `random_state=42`, `stratify=y`) preserving class ratios ($N_{\text{train}} = 6,482$, $N_{\text{test}} = 1,621$).
-
----
-
-## 🤖 Model Experimentation & Comparative Evaluation
-
-Three diverse algorithmic families were tuned and benchmarked on identical stratified test partitions ($N=1,621$).
-
-### 1. Multinomial Logistic Regression (Linear Baseline)
-* **Optimization:** L-BFGS solver with balanced class weighting (`class_weight='balanced'`) to penalize minority misclassifications.
-* **Regularization Tuning:** Evaluated $C \in [0.01, 0.1, 0.5, 1, 2, 5, 10]$. Selected $C = 2$ achieving peak validation stability.
-
-### 2. K-Nearest Neighbors (Instance-Based Classifier)
-* **Distance Metric:** Euclidean distance computed over standardized feature representations.
-* **Neighbor Search ($k$):** Empirically swept $k \in [1, 30]$. Peak Macro F1 performance was achieved at $k = 7$ (balancing variance reduction against local boundary oversmoothing).
-
-### 3. Decision Tree Classifier (Non-Linear Rule Induction)
-* **Depth & Complexity Sweep:** Tested shallow ($depth = 3, 5$), intermediate ($depth = 7, 10, 15$), and unconstrained trees.
-* **Regularization:** Compared `min_samples_leaf` ($1$ to $50$) and class weighting (`balanced` vs. `None`).
-* **Selected Parameters:** `max_depth=15`, `min_samples_leaf=1`, `class_weight='balanced'`, `random_state=42`.
-
----
-
-## 📈 Benchmark Results & Performance Summary
-
-| Model Architecture | Hyperparameters | Test Accuracy | Macro Precision | Macro Recall | **Macro F1-Score** |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **Decision Tree Classifier** *(Selected)* | `max_depth=15, min_samples_leaf=1, balanced` | **99.69%** | **98.78%** | **98.94%** | **0.9886 (98.86%)** |
-| **Multinomial Logistic Regression** | `C=2, class_weight='balanced'` | 99.44% | 98.06% | 98.28% | 0.9815 (98.15%) |
-| **K-Nearest Neighbors (KNN)** | `n_neighbors=7, metric='euclidean'` | 99.44% | 98.04% | 98.07% | 0.9805 (98.05%) |
-
----
-
-## 🎯 Confusion Matrix Analysis Through a Business Lens
-
-In facility operations, **not all misclassifications carry equal cost**:
-* **Benign Error:** Misclassifying $2$ people as $3$ people has minimal impact; HVAC remains on and airflow adjusts slightly.
-* **Critical Operational Error:** Misclassifying $0$ people as $3$ people (or $3$ people as $0$) is unacceptable. Predicting an empty room when three occupants are present causes automated systems to cut off climate control, exhaust fans, and lighting during an active meeting.
-
-### Model Confusion Matrices (Test Set $N=1,621$)
-
-#### 1. Decision Tree (Champion Model)
-```
-                Predicted 0   Predicted 1   Predicted 2   Predicted 3
-Actual Class 0:    1317            0             0             0
-Actual Class 1:       0           73             0             0
-Actual Class 2:       0            1           116             3
-Actual Class 3:       0            0             1           110
-```
-* **Critical Error Rate:** **0%**. Zero instances of Class 0 misclassified as Class 3 (or vice versa).
-* **Minor Boundary Noise:** Only 5 total misclassifications across 1,621 records, solely occurring between adjacent occupancy states ($2 \leftrightarrow 3$ and $2 \leftrightarrow 1$).
-
-#### 2. Logistic Regression
-```
-                Predicted 0   Predicted 1   Predicted 2   Predicted 3
-Actual Class 0:    1316            0             0             1  <-- 1 false occupancy alarm
-Actual Class 1:       0           73             0             0
-Actual Class 2:       0            0           114             6
-Actual Class 3:       0            0             2           109
-```
-
-#### 3. K-Nearest Neighbors (KNN)
-```
-                Predicted 0   Predicted 1   Predicted 2   Predicted 3
-Actual Class 0:    1317            0             0             0
-Actual Class 1:       0           73             0             0
-Actual Class 2:       0            0           114             6
-Actual Class 3:       0            0             3           108
-```
-
----
-
-## 💼 Operationalizing Predictions for Facilities Management
-
-| Model Prediction | Operational Action Triggered | Business Value Delivered |
-| :---: | :--- | :--- |
-| **`0` Occupants** | • Release unused room reservations after a 10-minute grace window.<br>• Transition HVAC to energy-saver setback mode.<br>• Extinguish overhead illumination. | **Energy Conservation & Real Estate Optimization:** Eliminates ghost bookings and cuts utility overhead. |
-| **`1` Occupant** | • Flag room as occupied for single-person privacy.<br>• Maintain baseline comfort temperature. | **Space Governance:** Detects 8-person conference rooms being monopolized by solo workers. |
-| **`2` Occupants** | • Maintain standard ambient conditions.<br>• Track collaborative utilization trends. | **Space Planning:** Measures real-world 1-on-1 and peer collaboration density. |
-| **`3` Occupants** | • Ramp up ventilation rates to flush $CO_2$.<br>• Trigger meeting room overflow alerts if capacity exceeds thresholds. | **Health, Wellness & Safety:** Prevents cognitive fatigue from $CO_2$ buildup and aids emergency accounting. |
-
----
-
-## 🏛️ Production Readiness & Executive Recommendation
-
-### Recommendation for Head of Facilities
-> **Recommendation:** Proceed with the **Decision Tree Classifier** as the inference engine for the Phase 2 multi-room pilot.
-
-* **Feasibility Proved:** The Proof of Concept clearly demonstrates that commodity IoT sensor streams (without invasive cameras or microphones) can accurately predict occupancy levels ($>98.8\%$ Macro F1).
-* **Key Driving Signals:** $CO_2$ accumulation rate (`S5_CO2_Slope`), sound amplitude (`S1_Sound`), and directional illuminance are the most decisive indicators of active human count.
-* **Interpretability:** Decision tree splits mirror physical logic (e.g., $CO_2 > \tau$ and Sound $> \theta$), making decisions auditable for facility operators.
-
-### ⚠️ Pre-Deployment Prerequisites (Why Company-Wide Rollout Should Wait)
-This PoC was trained on **one specific meeting room** under a controlled observational period. To transition from PoC to enterprise-grade production, the following real-world factors must be addressed:
-1. **Room Geometry & Volume Disparities:** A 500 ppm $CO_2$ elevation in a small huddle room represents fewer occupants than in an executive boardroom.
-2. **Sensor Placement Variations:** Sensors placed near supply vents, windows, or doors experience draft artifacts and sunlight washouts.
-3. **Multi-Room Diversity Training:** Data must be collected across multiple room sizes, HVAC ventilation rates, and floor layouts prior to global deployment.
-
----
-
-## 🗣️ The Interview Narrative (STAR Method)
-
-When discussing this project with hiring managers and technical interviewers:
-
-> *"At NovaSpace Technologies, the Facilities team faced a major blind spot: they knew when rooms were booked, but not when they were actually used. Meetings got cancelled, lights and AC ran in empty rooms, and large conference spaces were monopolized by single individuals.*
-> 
-> *As a Data Engineer, I was tasked with determining whether the telemetry our platform already collected—temperature, sound, light, CO₂, and PIR motion—could solve this as a 4-class occupancy estimation problem (0 to 3 people).*
-> 
-> *Before modeling, I conducted a data quality and engineering audit. I verified that raw Date/Time timestamps were transformed into cyclical hour and weekday features to prevent temporal data leakage. I also standardized features, which was vital since CO₂ readings in the thousands would otherwise distort distance calculations in algorithms like KNN.*
-> 
-> *Recognizing that the room is empty over 81% of the time, I evaluated Multinomial Logistic Regression, KNN, and Decision Trees using **Macro-averaged F1-score**, ensuring minority classes were not eclipsed. The Decision Tree emerged as the top performer with a 98.86% Macro F1-score and zero critical misclassifications between 0 and 3 occupants.*
-> 
-> *Crucially, I advised the Head of Facilities not to roll this out company-wide immediately. Because the PoC was calibrated on a single room's layout, scaling effectively requires training across multiple room volumes and HVAC profiles."*
-
----
-
-## 📂 Repository Structure
+### Preprocessing Architecture (`ColumnTransformer`)
+Features were partitioned and transformed without data leakage:
 
 ```text
-├── ML_Hackthon_project2.ipynb   # Complete Jupyter Notebook (EDA, Preprocessing, Modeling)
-├── README.md                    # Project documentation & business report
-└── predictions.csv              # Model inference predictions on holdout test set (2,026 records)
+Raw Features (18 Predictors)
+ │
+ ├── Numerical Features (9) ─────────► StandardScaler()
+ │   ['age', 'balance', 'day', 'campaign', 'pdays',
+ │    'previous', 'was_contacted_before',
+ │    'previous_success', 'total_contacts']
+ │
+ └── Categorical Features (9) ───────► OneHotEncoder(handle_unknown='ignore')
+     ['job', 'marital', 'education', 'default',
+      'housing', 'loan', 'contact', 'month', 'poutcome']
+ │
+ └── Output Matrix: 53 Preprocessed Feature Columns
+```
+
+### Validation Strategy
+- **Train-Test Split:** 80% Train (28,934 samples) / 20% Test (7,234 samples).
+- **Stratification:** Stratified by target $y$ (`stratify=y`, `random_state=42`) to guarantee identical class distributions across both splits.
+
+---
+
+## 🧪 Model Development & Hyperparameter Tuning
+
+Three distinct model families were implemented, tuned, and evaluated on the holdout test set:
+
+### 1. Regularized Logistic Regression
+- **Purpose:** Linear decision baseline with calibrated probabilities.
+- **Tuning:** Sweep across inverse regularization parameter $C \in [0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0]$ with `class_weight='balanced'` and `max_iter=2000`.
+- **Optimal Parameter:** $C = 5.0$ yielded peak Macro F1 of `0.6042`.
+
+### 2. K-Nearest Neighbors (KNN)
+- **Purpose:** Non-parametric instance-based classifier.
+- **Tuning:** Iterated $k \in [1, 30]$ on standard-scaled features.
+- **Selected Parameter:** $k = 5$ (Macro F1 = `0.6260`).
+
+### 3. Decision Tree Classifier
+- **Purpose:** Non-linear rule-based model capable of capturing complex interactions without distance distortion.
+- **Tuning Progression:**
+  - `max_depth` sweep: tested values $[3, 5, 7, 10, 15, 20, \text{None}]$; depth 7–10 performed best.
+  - `class_weight`: testing `'balanced'` increased Macro F1 from `0.6264` to `0.6425`.
+  - Joint grid on `max_depth` $\times$ `min_samples_leaf`: depth 7 with leaf constraints yielded top stability.
+  - Criteria comparison: Evaluated `gini` vs. `entropy` vs. `log_loss`.
+- **Selected Configuration:** `DecisionTreeClassifier(max_depth=7, class_weight='balanced', random_state=42)`.
+
+---
+
+## 📈 Model Evaluation & Comparison
+
+Performance on the holdout test set ($N = 7,234$, with 6,388 actual 'no' and 846 actual 'yes'):
+
+| Model Architecture | Accuracy | Precision (Class 1) | Recall (Class 1) | Macro F1 Score | Confusion Matrix [TN, FP / FN, TP] |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Logistic Regression** ($C=5.0$, balanced) | 74.94% | 25.91% | **61.47%** | 0.6042 | `[[4901, 1487], [326, 520]]` |
+| **K-Nearest Neighbors** ($k=5$) | **88.64%** | **53.41%** | 22.22% | 0.6260 | `[[6224, 164], [658, 188]]` |
+| **Decision Tree** ($\text{depth}=7$, balanced) 🏆 | 83.15% | 35.14% | 52.13% | **0.6606** | `[[5574, 814], [405, 441]]` |
+
+### Business Trade-off Analysis: False Positives vs. False Negatives
+In retail banking campaign economics, errors have asymmetric costs:
+
+1. **False Positive (Type I Error):**
+   - *Scenario:* Model predicts "Yes", customer says "No".
+   - *Cost:* ~3–5 minutes of call-center time and phone charges.
+2. **False Negative (Type II Error):**
+   - *Scenario:* Model predicts "No", but customer would have deposited funds.
+   - *Cost:* Loss of significant interest margin, long-term balance retention, and customer lifetime value.
+
+### Why KNN Fails the Business:
+Despite the highest accuracy (**88.64%**), KNN suffered an unacceptable **77.78% False Negative rate** (missed 658 out of 846 actual subscribers). It optimized accuracy by defaulting toward the majority class.
+
+### Why Decision Tree Wins:
+- Delivers the highest overall **Macro F1 score (0.6606)**.
+- Captures **441 true subscribers** (Recall: 52.13%) while reducing non-converting calls from 6,388 down to just 814 (an **87.25% reduction in wasted calls**).
+- Produces clear, explainable decision paths that compliance and marketing stakeholders can audit.
+
+---
+
+## 🚀 Final Production Model & Inference
+
+1. **Retraining:** The final `DecisionTreeClassifier(max_depth=7, class_weight='balanced', random_state=42)` was fitted on all 36,168 records using the full pipeline with `handle_unknown='ignore'` enabled.
+2. **Inference on Test Set:** Evaluated across the 9,043 unlabelled prospect records (`test.csv`).
+3. **Generated Predictions (`predictions.csv`):**
+   - Predicted Non-Subscribers (`no`): **7,500 (82.9%)**
+   - Predicted Target Calls (`yes`): **1,543 (17.1%)**
+4. **Output Verification:** Successfully produced 9,043 rows mapped to the schema `['id', 'prediction']`.
+
+---
+
+## 💡 Stakeholder Recommendations for Head of Marketing
+
+```text
+                               Daily Workflow
+  ┌────────────────────────┐      ┌─────────────────────────┐      ┌─────────────────────────┐
+  │  Customer Database     │ ───► │ ML Scoring Pipeline     │ ───► │ Top Tier (17% of Base)  │
+  │  (Unfiltered Prospects)│      │ (Decision Tree Model)   │      │ Dialed by Call Center   │
+  └────────────────────────┘      └─────────────────────────┘      └─────────────────────────┘
+                                                                                │
+                                                                   Captures >50% of Total
+                                                                   Conversions at 83% Lower
+                                                                   Dialing Volume
+```
+
+1. **Implement Prioritized Outreach:**
+   Stop calling 100% of customer lists. Focus phone campaigns strictly on the ~17% flagged by the model, capturing over half of total conversions while slashing telemarketing costs by over 80%.
+2. **Omnichannel Re-allocation:**
+   For customers flagged as `no`, avoid cold calls. Instead, transition them to low-cost digital touchpoints (email digests, mobile app notifications, in-app banners).
+3. **Respect Operational Boundaries:**
+   Never use call duration as an input criterion for prospect scoring; ensure real-time model scoring runs strictly on pre-call attributes.
+
+---
+
+## 🛠️ Repository Structure
+
+```text
+.
+├── ML_Hackthon_project1.ipynb    # Complete EDA, preprocessing, training & tuning notebook
+├── predictions.csv               # Final test set predictions (9,043 records)
+├── README.md                     # Comprehensive project documentation
 ```
 
 ---
 
-## 🛠️ How to Run
+## 💻 How to Run
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/smart-room-occupancy-poc.git
-   cd smart-room-occupancy-poc
-   ```
+### Prerequisites
+- Python 3.10+
+- Dependencies: `numpy`, `pandas`, `scipy`, `scikit-learn`, `matplotlib`
 
-2. **Install required dependencies:**
-   ```bash
-   pip install numpy pandas scikit-learn matplotlib
-   ```
+### Installation
+```bash
+pip install numpy pandas scikit-learn matplotlib
+```
 
-3. **Execute the analysis:**
-   Launch Jupyter Notebook or execute the cells in `ML_Hackthon_project2.ipynb`:
-   ```bash
-   jupyter notebook ML_Hackthon_project2.ipynb
-   ```
+### Execution
+Open and execute all cells in `ML_Hackthon_project1.ipynb` or run via Jupyter:
+```bash
+jupyter notebook ML_Hackthon_project1.ipynb
+```
+The notebook automatically outputs the preprocessed matrices, model benchmark tables, decision tree visualizations, and exports `predictions.csv`.
